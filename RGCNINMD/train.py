@@ -1,3 +1,5 @@
+import gc
+
 from model import *
 from getData import *
 from sklearn.model_selection import KFold
@@ -10,24 +12,23 @@ def train_valid_test(args):
     neg_samples_index_shuffled = neg_samples_index_shuffled[:, :pos_samples_index_shuffled.shape[1]]
     pos_samples_index_shuffled = pos_samples_index_shuffled.T
     neg_samples_index_shuffled = neg_samples_index_shuffled.T
-
+    t.manual_seed(42)
     k_fold = KFold(n_splits=args.kfolds, shuffle=True, random_state=42)
     train_idx = []
     test_idx = []
     auc_list = []
+    pre_list = []
+    acc_list = []
+    f1_list = []
+    recall_list = []
+    aupr_list = []
+   
     for train_index, test_index in k_fold.split(pos_samples_index_shuffled):
         train_idx.append(train_index)
         test_idx.append(test_index)
-
     for i in range(args.kfolds):
         train_pos_samples_80_percent = pos_samples_index_shuffled[train_idx[i]]
         train_neg_samples_80_percent = neg_samples_index_shuffled[train_idx[i]]
-        nest_k_fold = KFold(n_splits=args.kfolds, shuffle=True, random_state=1)
-        nest_train_idx = []
-        valid_idx = []
-        for nest_train_index, valid_index in nest_k_fold.split(train_pos_samples_80_percent):
-            nest_train_idx.append(nest_train_index)
-            valid_idx.append(valid_index)
 
         train_pos_samples_80_percent = train_pos_samples_80_percent.T
         train_neg_samples_80_percent = train_neg_samples_80_percent.T
@@ -46,133 +47,22 @@ def train_valid_test(args):
             (t.ones(test_pos_samples_20_percent.shape[1]), t.zeros(test_neg_samples_20_percent.shape[1]))).to(
             args.device)
 
-        best_para_group = [0, 0, 0, 0, 0, 0, 0, 0, 0]
-        max_arr_auc = -np.inf
-        GCNlayer = [1, 2, 3]
-        RGCNlayer = [1, 2, 3]
-        proj = [1000, 1024, 1500, 2000, 2048, 2500, 3000]
-        mthreshold = [[0.75, 0.5, 0.25]]
-        dthreshold = [[0.75, 0.5, 0.25], [0.7, 0.4, 0.1], [0.8, 0.5, 0.2]]
-        mtop_i_percent = [0.1, 0.15, 0.2, 0.25]
-        dtop_i_percent = [0.1, 0.15, 0.2, 0.25]
-        m_common_i = [10, 11, 12, 13, 14, 15]
-        d_common_i = [10, 11, 12, 13, 14, 15]
         print(
-            f'###################### out Fold{i + 1} of {args.kfolds}##########################')
-        for gcnlayer in GCNlayer:
-            args.GCNlayer = gcnlayer
-            for rgcnlayer in RGCNlayer:
-                args.RGCNlayer = rgcnlayer
-                for p in proj:
-                    args.proj = p
-                    for mth in mthreshold:
-                        args.mthreshold = mth
-                        for dth in dthreshold:
-                            args.dthreshold = dth
-                            for mto in mtop_i_percent:
-                                args.mtop_i_percent = mto
-                                for dto in dtop_i_percent:
-                                    args.dtop_i_percent = dto
-                                    for m_c in m_common_i:
-                                        args.m_common_i = m_c
-                                        for d_c in d_common_i:
-                                            args.d_common_i = d_c
-                                            para_group = [gcnlayer, rgcnlayer, p, mth, dth, mto, dto, m_c, d_c]
-                                            nest_auc_list = []
+            f'######################  Fold {i + 1} of {args.kfolds}##########################')
 
-                                            for j in range(args.kfolds):
-                                                nest_train_pos_samples_80_percent = train_pos_samples_80_percent.T[
-                                                    nest_train_idx[j]]
-                                                nest_train_neg_samples_80_percent = train_neg_samples_80_percent.T[
-                                                    nest_train_idx[j]]
-                                                nest_train_pos_samples_80_percent = nest_train_pos_samples_80_percent.T
-                                                nest_train_neg_samples_80_percent = nest_train_neg_samples_80_percent.T
-
-                                                nest_valid_pos_samples_20_percent = train_pos_samples_80_percent.T[
-                                                    valid_idx[j]]
-                                                nest_valid_neg_samples_20_percent = train_neg_samples_80_percent.T[
-                                                    valid_idx[j]]
-                                                nest_valid_pos_samples_20_percent = nest_valid_pos_samples_20_percent.T
-                                                nest_valid_neg_samples_20_percent = nest_valid_neg_samples_20_percent.T
-                                                nest_train_samples = t.hstack((nest_train_pos_samples_80_percent,
-                                                                               nest_train_neg_samples_80_percent)).to(
-                                                    args.device)
-                                                nest_valid_samples = t.hstack((nest_valid_pos_samples_20_percent,
-                                                                               nest_valid_neg_samples_20_percent)).to(
-                                                    args.device)
-                                                nest_train_labels = t.hstack((t.ones(
-                                                    nest_train_pos_samples_80_percent.shape[1]), t.zeros(
-                                                    nest_train_neg_samples_80_percent.shape[1]))).to(args.device)
-                                                nest_valid_labels = t.hstack((t.ones(
-                                                    nest_valid_pos_samples_20_percent.shape[1]), t.zeros(
-                                                    nest_valid_neg_samples_20_percent.shape[1]))).to(args.device)
-                                                model = Model(args, kernel_matrix_edge_index).to(args.device)
-                                                optimizer = t.optim.AdamW(params=model.parameters(), weight_decay=1e-4,
-                                                                          lr=args.lr)
-                                                loss_fn = t.nn.BCEWithLogitsLoss()
-                                                print(
-                                                    f'******************* nest Fold{j + 1} of {args.kfolds}**************************')
-                                                for l in range(args.epoch):
-                                                    model.train()
-                                                    optimizer.zero_grad()
-                                                    result = model(args, kernel_matrix_edge_index, nest_train_samples)
-                                                    loss = loss_fn(t.flatten(result), nest_train_labels)
-                                                    loss.backward()
-                                                    optimizer.step()
-                                                    print('epoch {:03d} train_loss {:.8f}  '.format(
-                                                        l + 1, loss.item()))
-                                                model.eval()
-                                                with t.no_grad():
-                                                    y_pre = model(args, kernel_matrix_edge_index,
-                                                                  nest_valid_samples)
-                                                    y_pre = t.flatten(y_pre)
-                                                    y_pre = t.sigmoid(y_pre)
-                                                    y_pre = y_pre.cpu().numpy()
-                                                    y_real = nest_valid_labels.cpu().numpy()
-                                                    nest_auc_list.append(metrics.roc_auc_score(y_real, y_pre))
-                                                    y_score = np.where(y_pre >= 0.5, 1, 0)
-                                                    precision = metrics.precision_score(y_real, y_score)
-                                                    print('nest fold{:01d} auc{:.4f} pre{:.4f}'.format(j + 1,
-                                                                                                       nest_auc_list[j],
-                                                                                                       precision))
-                                            arr = np.array(nest_auc_list)
-                                            averages = np.round(np.mean(arr, axis=0), 4)
-                                            if averages > max_arr_auc:
-                                                max_arr_auc = averages
-                                                for z in range(len(best_para_group)):
-                                                    best_para_group[z] = para_group[z]
-        print('*********************************************')
-        print(f"""
-        最佳参数组合：
-        GCNlayer: {best_para_group[0]}
-        RGCNlayer: {best_para_group[1]}
-        proj: {best_para_group[2]}
-        mthreshold: {best_para_group[3]}
-        dthreshold: {best_para_group[4]}
-        mtop_i_percent: {best_para_group[5]}
-        dtop_i_percent: {best_para_group[6]}
-        m_common_i: {best_para_group[7]}
-        d_common_i: {best_para_group[8]}
-        """)
-        args.GCNlayer = best_para_group[0]
-        args.RGCNlayer = best_para_group[1]
-        args.proj = best_para_group[2]
-        args.mthreshold = best_para_group[3]
-        args.dthreshold = best_para_group[4]
-        args.mtop_i_percent = best_para_group[5]
-        args.dtop_i_percent = best_para_group[6]
-        args.m_common_i = best_para_group[7]
-        args.d_common_i = best_para_group[8]
         model = Model(args, kernel_matrix_edge_index).to(args.device)
         optimizer = t.optim.AdamW(params=model.parameters(), weight_decay=1e-4, lr=args.lr)
         loss_fn = t.nn.BCEWithLogitsLoss()
-        for _ in range(args.epoch):
+        for l in range(args.epoch):
             model.train()
             optimizer.zero_grad()
             result = model(args, kernel_matrix_edge_index, train_samples)
             loss = loss_fn(t.flatten(result), train_labels)
             loss.backward()
             optimizer.step()
+            print('epoch {:03d} train_loss {:.8f}  '.format(
+                l + 1, loss.item()))
+            gc.collect()
         model.eval()
         with t.no_grad():
             y_pre = model(args, kernel_matrix_edge_index,
@@ -181,13 +71,50 @@ def train_valid_test(args):
             y_pre = t.sigmoid(y_pre)
             y_pre = y_pre.cpu().numpy()
             y_real = test_labels.cpu().numpy()
-            auc_list.append(metrics.roc_auc_score(y_real, y_pre))
+            auc = metrics.roc_auc_score(y_real, y_pre)
+            auc_list.append(auc)
+            precision_u, recall_u, thresholds_u = metrics.precision_recall_curve(y_real, y_pre)
+            aupr = metrics.auc(recall_u, precision_u)
+            aupr_list.append(aupr)
             y_score = np.where(y_pre >= 0.5, 1, 0)
+            acc = metrics.accuracy_score(y_real, y_score)
+            acc_list.append(acc)
+            f1 = metrics.f1_score(y_real, y_score)
+            f1_list.append(f1)
+            recall = metrics.recall_score(y_real, y_score)
+            recall_list.append(recall)
             precision = metrics.precision_score(y_real, y_score)
-            print('out fold{:01d} auc{:.4f} pre{:.4f}'.format(i + 1,
-                                                              auc_list[i],
-                                                              precision))
+            pre_list.append(precision)
+            print(' fold {:01d} auc {:.4f} pre {:.4f} acc {:.4f} recall {:.4f} f1 {:.4f} aupr {:.4f}'.format(
+                i + 1,
+                auc,
+                precision,
+                acc,
+                recall,
+                f1,
+                aupr))
     print(f'all auc:{auc_list}')
-    arr = np.array(auc_list)
-    averages = np.round(np.mean(arr, axis=0), 4)
-    print('final auc{:.4f}'.format(averages))
+    print(f'all precision:{pre_list}')
+    print(f'all acc:{acc_list}')
+    print(f'all recall:{recall_list}')
+    print(f'all f1:{f1_list}')
+    print(f'all aupr:{aupr_list}')
+    arr_auc = np.array(auc_list)
+    arr_pre = np.array(pre_list)
+    arr_acc = np.array(acc_list)
+    arr_recall = np.array(recall_list)
+    arr_f1 = np.array(f1_list)
+    arr_aupr = np.array(aupr_list)
+    averages_auc = np.round(np.mean(arr_auc, axis=0), 4)
+    averages_pre = np.round(np.mean(arr_pre, axis=0), 4)
+    averages_acc = np.round(np.mean(arr_acc, axis=0), 4)
+    averages_recall = np.round(np.mean(arr_recall, axis=0), 4)
+    averages_f1 = np.round(np.mean(arr_f1, axis=0), 4)
+    averages_aupr = np.round(np.mean(arr_aupr, axis=0), 4)
+    print(
+        'final auc {:.4f} pre {:.4f} acc {:.4f} recall {:.4f} f1 {:.4f} aupr {:.4f}'.format(averages_auc,
+                                                                                            averages_pre,
+                                                                                            averages_acc,
+                                                                                            averages_recall,
+                                                                                            averages_f1,
+                                                                                            averages_aupr))

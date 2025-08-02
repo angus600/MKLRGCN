@@ -41,35 +41,9 @@ def get_mirna_disease_Kernel(args):
 
     kernel_matrix_edge_index['m_d'] = {'matrix': m_d}
 
-    "miRNA functional sim + miRNA sequence sim and Hadamard products"
-    m_func_add_seq_sim = (m_func_sim + m_seq_sim) / 2
-    m_func_hadamard_seq_sim = m_func_sim * m_seq_sim
+    m_stack_kernel = t.stack((m_func_sim, m_seq_sim, m_gip_sim))
 
-    "miRNA functional sim + miRNA GIP sim and Hadamard products"
-    m_func_add_gip_sim = (m_func_sim + m_gip_sim) / 2
-    m_func_hadamard_gip_sim = m_func_sim * m_gip_sim
-
-    "miRNA sequence sim + miRNA GIP sim and Hadamard products "
-    m_seq_add_gip_sim = (m_seq_sim + m_gip_sim) / 2
-    m_seq_hadamard_gip_sim = m_seq_sim * m_gip_sim
-
-    "disease functional sim + disease semantic sim and Hadamard products"
-    d_func_add_sem_sim = (d_func_sim + d_sem_sim) / 2
-    d_func_hadamard_sem_sim = d_func_sim * d_sem_sim
-
-    "disease functional sim + disease GIP sim and Hadamard products"
-    d_func_add_gip_sim = (d_func_sim + d_gip_sim) / 2
-    d_func_hadamard_gip_sim = d_func_sim * d_gip_sim
-
-    "disease semantic sim + disease GIP sim and Hadamard products"
-    d_sem_add_gip_sim = (d_sem_sim + d_gip_sim) / 2
-    d_sem_hadamard_gip_sim = d_sem_sim * d_gip_sim
-
-    m_stack_kernel = t.stack((m_func_add_seq_sim, m_func_hadamard_seq_sim, m_func_add_gip_sim,
-                              m_func_hadamard_gip_sim, m_seq_add_gip_sim, m_seq_hadamard_gip_sim))
-
-    d_stack_kernel = t.stack((d_func_add_sem_sim, d_func_hadamard_sem_sim, d_func_add_gip_sim,
-                              d_func_hadamard_gip_sim, d_sem_add_gip_sim, d_sem_hadamard_gip_sim))
+    d_stack_kernel = t.stack((d_func_sim, d_sem_sim, d_gip_sim))
 
     kernel_matrix_edge_index['m_stack_kernel'] = m_stack_kernel
     kernel_matrix_edge_index['d_stack_kernel'] = d_stack_kernel
